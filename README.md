@@ -1,0 +1,1 @@
+# vbgc_android_assets
