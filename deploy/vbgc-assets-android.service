@@ -1,0 +1,31 @@
+[Unit]
+Description=VBGC Assets Android (Flask + gunicorn)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/vbgc_android_assets
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/vbgc_android_assets/.venv/bin/gunicorn \
+    --workers 4 \
+    --bind 127.0.0.1:9856 \
+    --access-logfile - \
+    --error-logfile - \
+    app:app
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/vbgc_android_assets
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,46 @@
+# /etc/nginx/sites-available/vbgc-assets-android
+# ln -s /etc/nginx/sites-available/vbgc-assets-android /etc/nginx/sites-enabled/
+# sudo nginx -t && sudo systemctl reload nginx
+
+upstream vbgc_assets_android_app {
+    server 127.0.0.1:9856;
+    keepalive 32;
+}
+
+server {
+    listen 7003;
+    listen [::]:7003;
+    server_name _;
+
+    # Allow large video downloads without buffering to disk on nginx
+    client_max_body_size 50M;
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+
+    # Serve asset files directly from disk (fast, native range support).
+    # Listing endpoints like /video-bg/ end in a slash with nothing after,
+    # so they don't match the `.+` and fall through to the Flask app.
+    location ~ ^/(video-bg|image-assets|image-and-video)/.+$ {
+        root /home/ubuntu/vbgc_android_assets/assets;
+        try_files $uri @backend;
+
+        # Cache aggressively — asset URLs are stable filenames
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800, immutable";
+        add_header Accept-Ranges bytes;
+    }
+
+    # Everything else (index, /healthz, /<folder>/ listings) → Flask
+    location / {
+        proxy_pass http://vbgc_assets_android_app;
+    }
+
+    location @backend {
+        proxy_pass http://vbgc_assets_android_app;
+    }
+}
