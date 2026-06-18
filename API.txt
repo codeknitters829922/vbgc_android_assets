@@ -1,0 +1,161 @@
+================================================================
+ VBGC Android Assets — HTTP API
+================================================================
+
+Base URL (prod): http://44.222.48.230:7003
+Base URL (dev):  http://localhost:5000
+
+All responses are JSON unless they are a file download.
+All endpoints are GET. No auth.
+
+Folder slugs (used in the URL):
+    video-bg          — video backgrounds (mp4 / webm)
+    image-assets      — image assets
+    image-and-video   — mixed media
+
+----------------------------------------------------------------
+ 1. GET /
+----------------------------------------------------------------
+Service index. Returns the URL templates for each folder.
+
+Response 200 (application/json):
+{
+  "service": "vbgc_android_assets",
+  "folders": {
+    "video-bg": {
+      "list": "http://44.222.48.230:7003/video-bg/",
+      "file": "http://44.222.48.230:7003/video-bg/<filename>"
+    },
+    "image-assets":    { "list": "...", "file": "..." },
+    "image-and-video": { "list": "...", "file": "..." }
+  }
+}
+
+----------------------------------------------------------------
+ 2. GET /healthz
+----------------------------------------------------------------
+Liveness check.
+
+Response 200 (application/json):
+{ "status": "ok" }
+
+----------------------------------------------------------------
+ 3. GET /<folder>/
+----------------------------------------------------------------
+List every file in a folder. Trailing slash is required.
+
+Path parameters:
+    folder    one of: video-bg | image-assets | image-and-video
+
+Response 200 (application/json):
+{
+  "folder": "image-and-video",
+  "count": 1,
+  "files": [
+    {
+      "name": "re0.webp",
+      "size": 198566,
+      "url":  "http://44.222.48.230:7003/image-and-video/re0.webp"
+    }
+  ]
+}
+
+Errors:
+    404    folder slug not recognized
+
+Notes:
+    - Files are sorted alphabetically by name.
+    - Hidden files (starting with ".") are not listed.
+    - `size` is in bytes.
+    - `url` is absolute and includes the port — use it directly.
+
+----------------------------------------------------------------
+ 4. GET /<folder>/<filename>
+----------------------------------------------------------------
+Stream / download an asset file.
+
+Path parameters:
+    folder    one of: video-bg | image-assets | image-and-video
+    filename  the file name from the listing's `name` field
+
+Query parameters:
+    download=1    (optional) force Content-Disposition: attachment;
+                  without it the browser plays/displays inline.
+
+Response 200 (or 206 on range requests):
+    Headers:
+        Content-Type     guessed from extension (video/mp4, image/webp, ...)
+        Content-Length   file size
+        Accept-Ranges    bytes
+        Cache-Control    public, max-age=604800, immutable
+    Body: the raw file bytes.
+
+Range requests:
+    HTTP Range is fully supported (served by nginx directly), so
+    <video> tags and seekable players work without extra config.
+
+    Example:
+        Request:  GET /video-bg/clip.mp4
+                  Range: bytes=1048576-2097151
+        Response: 206 Partial Content
+                  Content-Range: bytes 1048576-2097151/15728640
+
+Errors:
+    404    folder slug not recognized, or file does not exist
+    416    requested range not satisfiable
+
+----------------------------------------------------------------
+ Examples — curl
+----------------------------------------------------------------
+
+# Service index
+curl http://44.222.48.230:7003/
+
+# Health check
+curl http://44.222.48.230:7003/healthz
+
+# List a folder
+curl http://44.222.48.230:7003/image-and-video/
+
+# Download a file (saved as re0.webp locally)
+curl -O http://44.222.48.230:7003/image-and-video/re0.webp
+
+# Force-download (sets attachment disposition)
+curl -OJ "http://44.222.48.230:7003/video-bg/clip.mp4?download=1"
+
+# Range request (first 1 MB of a video)
+curl -H "Range: bytes=0-1048575" \
+     http://44.222.48.230:7003/video-bg/clip.mp4 -o head.bin
+
+----------------------------------------------------------------
+ Examples — Android (OkHttp + Kotlin)
+----------------------------------------------------------------
+
+// List files
+val req = Request.Builder()
+    .url("http://44.222.48.230:7003/image-and-video/")
+    .build()
+client.newCall(req).execute().use { resp ->
+    val json = resp.body!!.string()
+    // parse { folder, count, files: [{name, size, url}, ...] }
+}
+
+// Load image with Coil / Glide using the `url` field straight from JSON
+ImageRequest.Builder(context)
+    .data(file.url)
+    .target(imageView)
+    .build()
+
+// Stream video — ExoPlayer handles range requests natively
+val mediaItem = MediaItem.fromUri(file.url)
+player.setMediaItem(mediaItem)
+player.prepare()
+
+----------------------------------------------------------------
+ Operational notes
+----------------------------------------------------------------
+- Asset files are served directly by nginx (fast, native range support).
+- The Flask app only handles `/`, `/healthz`, and folder listings.
+- URLs in the JSON response are built from the request's Host header,
+  so they automatically reflect the host:port the client connected to.
+- No CDN or signing — anyone with the URL can fetch the file.

@@ -19,7 +19,7 @@ The three asset folders are the only content served. They're created automatical
 
 - `GET /` — JSON index with URL templates for each folder
 - `GET /healthz` — health check
-- `GET /<folder>/` — JSON list of files (name, size, url)
+- `GET /<folder>/` — JSON list. Default: `files` (name, size, url). If the folder contains `manifest.json`, returns `items` from the manifest with `thumbnail_url`, `video_url`, and `pro` populated (other manifest fields are passed through).
 - `GET /<folder>/<filename>` — serve the file; supports HTTP Range (videos stream in `<video>` tags). Add `?download=1` to force `Content-Disposition: attachment`
 
 `<folder>` must be one of `video-bg`, `image-assets`, `image-and-video`. Anything else returns 404. Path traversal is blocked in `_safe_resolve` (app.py).

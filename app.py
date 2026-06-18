@@ -1,3 +1,4 @@
+import json
 import os
 import mimetypes
 from pathlib import Path
@@ -48,18 +49,43 @@ def healthz():
     return {"status": "ok"}
 
 
+def _file_url(folder: str, name: str) -> str:
+    return url_for("get_file", folder=folder, filename=name, _external=True)
+
+
+def _load_manifest(root: Path):
+    manifest_path = root / "manifest.json"
+    if not manifest_path.is_file():
+        return None
+    with manifest_path.open() as f:
+        return json.load(f)
+
+
 @app.get("/<folder>/")
 def list_folder(folder: str):
     if folder not in FOLDERS:
         abort(404)
     root = FOLDERS[folder]
+
+    manifest = _load_manifest(root)
+    if manifest is not None:
+        items = []
+        for entry in manifest.get("items", []):
+            item = {**entry, "pro": bool(entry.get("pro", False))}
+            if entry.get("thumbnail"):
+                item["thumbnail_url"] = _file_url(folder, entry["thumbnail"])
+            if entry.get("video"):
+                item["video_url"] = _file_url(folder, entry["video"])
+            items.append(item)
+        return jsonify({"folder": folder, "count": len(items), "items": items})
+
     files = []
     for entry in sorted(root.iterdir()):
-        if entry.is_file() and not entry.name.startswith("."):
+        if entry.is_file() and not entry.name.startswith(".") and entry.name != "manifest.json":
             files.append({
                 "name": entry.name,
                 "size": entry.stat().st_size,
-                "url": url_for("get_file", folder=folder, filename=entry.name, _external=True),
+                "url": _file_url(folder, entry.name),
             })
     return jsonify({"folder": folder, "count": len(files), "files": files})
 

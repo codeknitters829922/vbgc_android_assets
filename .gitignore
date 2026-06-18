@@ -5,3 +5,4 @@ venv/
 .env
 assets/*/*
 !assets/*/.gitkeep
+!assets/*/manifest.json
